@@ -8,10 +8,29 @@
 
 ## 1. Установка
 
+### Вариант А: Автоматическая установка (рекомендуется)
+
 ```bash
 # Клонируйте репозиторий
-git clone https://github.com/your-username/wc_product-manager.git
+git clone https://github.com/IzGus/wc_product-manager.git
 cd wc_product-manager
+
+# Запустите автоматическую настройку
+setup_venv.bat
+```
+
+### Вариант Б: Ручная установка
+
+```bash
+# Клонируйте репозиторий
+git clone https://github.com/IzGus/wc_product-manager.git
+cd wc_product-manager
+
+# Создайте виртуальное окружение
+python -m venv venv
+
+# Активируйте его
+venv\Scripts\activate.bat
 
 # Установите зависимости
 pip install -r requirements.txt
@@ -30,7 +49,18 @@ pip install -r requirements.txt
 
 ## 3. Запуск приложения
 
+### Простой способ:
 ```bash
+# Запуск через batch файл (рекомендуется)
+run_app.bat
+```
+
+### Ручной способ:
+```bash
+# Активируйте виртуальное окружение
+venv\Scripts\activate.bat
+
+# Запустите приложение
 python main.py
 ```
 

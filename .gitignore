@@ -110,6 +110,13 @@ ENV/
 env.bak/
 venv.bak/
 
+# Virtual environment
+venv/
+Scripts/
+
+# Batch files logs
+*.log
+
 # Spyder project settings
 .spyderproject
 .spyproject
