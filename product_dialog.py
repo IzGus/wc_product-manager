@@ -6,14 +6,97 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import List, Dict, Any, Optional
 import json
+import threading
 
 from product_models import Product, ProductCategory, ProductImage, ProductAttribute
 from meta_fields_dialog import MetaFieldsDialog
 
+
+class AttributeSelectionDialog:
+    """Диалог выбора атрибута для добавления к товару"""
+    
+    def __init__(self, parent, attributes: List[Dict]):
+        self.parent = parent
+        self.attributes = attributes
+        self.result = None
+        
+        # Создаем диалоговое окно
+        self.window = ctk.CTkToplevel(parent)
+        self.window.title("Выбор атрибута")
+        self.window.geometry("400x500")
+        self.window.transient(parent)
+        self.window.grab_set()
+        
+        # Центрируем окно
+        self.center_window()
+        self.setup_ui()
+    
+    def center_window(self):
+        """Центрирование окна"""
+        self.window.update_idletasks()
+        
+        window_width = self.window.winfo_width()
+        window_height = self.window.winfo_height()
+        parent_x = self.parent.winfo_x()
+        parent_y = self.parent.winfo_y()
+        parent_width = self.parent.winfo_width()
+        parent_height = self.parent.winfo_height()
+        
+        x = parent_x + (parent_width // 2) - (window_width // 2)
+        y = parent_y + (parent_height // 2) - (window_height // 2)
+        
+        self.window.geometry(f"{window_width}x{window_height}+{x}+{y}")
+    
+    def setup_ui(self):
+        """Настройка интерфейса"""
+        main_frame = ctk.CTkFrame(self.window)
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Заголовок
+        ctk.CTkLabel(main_frame, text="Выберите атрибут для добавления", 
+                    font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(0, 10))
+        
+        # Список атрибутов
+        list_frame = ctk.CTkFrame(main_frame)
+        list_frame.pack(fill="both", expand=True, pady=(0, 10))
+        
+        self.attributes_listbox = tk.Listbox(list_frame)
+        self.attributes_listbox.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Заполняем список
+        for attr in self.attributes:
+            self.attributes_listbox.insert("end", f"{attr['name']} (ID: {attr['id']})")
+        
+        # Кнопки
+        buttons_frame = ctk.CTkFrame(main_frame)
+        buttons_frame.pack(fill="x")
+        
+        cancel_btn = ctk.CTkButton(buttons_frame, text="Отмена", command=self.cancel)
+        cancel_btn.pack(side="right", padx=5)
+        
+        select_btn = ctk.CTkButton(buttons_frame, text="Выбрать", command=self.select_attribute)
+        select_btn.pack(side="right", padx=5)
+    
+    def select_attribute(self):
+        """Выбор атрибута"""
+        selection = self.attributes_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("Предупреждение", "Выберите атрибут из списка")
+            return
+        
+        attr_index = selection[0]
+        selected_attr = self.attributes[attr_index]
+        self.result = (selected_attr['id'], selected_attr['name'])
+        self.window.destroy()
+    
+    def cancel(self):
+        """Отмена"""
+        self.window.destroy()
+
 class ProductDialog:
     """Диалоговое окно для работы с товарами"""
     
-    def __init__(self, parent, product: Optional[Product] = None, categories: List[Dict] = None, attributes: List[Dict] = None):
+    def __init__(self, parent, product: Optional[Product] = None, categories: List[Dict] = None, attributes: List[Dict] = None, wc_manager=None):
         """
         Инициализация диалога
         
@@ -22,11 +105,13 @@ class ProductDialog:
             product: Товар для редактирования (None для создания нового)
             categories: Список доступных категорий
             attributes: Список доступных атрибутов
+            wc_manager: Менеджер WooCommerce для загрузки терминов атрибутов
         """
         self.parent = parent
         self.product = product
         self.categories = categories or []
         self.attributes = attributes or []
+        self.wc_manager = wc_manager
         self.result = None
         
         # Создаем диалоговое окно
@@ -239,9 +324,24 @@ class ProductDialog:
         
         ctk.CTkLabel(attributes_frame, text="Атрибуты товара", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=5)
         
-        # Здесь можно добавить более сложную логику для атрибутов
-        ctk.CTkLabel(attributes_frame, text="Функция атрибутов будет доступна в следующей версии", 
-                    text_color="gray").pack(pady=20)
+        # Управление атрибутами
+        attr_control_frame = ctk.CTkFrame(attributes_frame)
+        attr_control_frame.pack(fill="x", padx=5, pady=5)
+        
+        self.add_attribute_btn = ctk.CTkButton(attr_control_frame, text="➕ Добавить атрибут", 
+                                             command=self.add_product_attribute, width=120)
+        self.add_attribute_btn.pack(side="left", padx=5)
+        
+        self.remove_attribute_btn = ctk.CTkButton(attr_control_frame, text="➖ Удалить", 
+                                                command=self.remove_product_attribute, width=80, state="disabled")
+        self.remove_attribute_btn.pack(side="left", padx=5)
+        
+        # Список атрибутов товара
+        self.product_attributes_frame = ctk.CTkScrollableFrame(attributes_frame, height=200)
+        self.product_attributes_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Словарь для хранения виджетов атрибутов
+        self.attribute_widgets = {}
     
     def setup_images_tab(self):
         """Вкладка изображений"""
@@ -388,6 +488,9 @@ class ProductDialog:
         if self.product.meta_data:
             self.meta_data_text.delete("1.0", "end")
             self.meta_data_text.insert("1.0", json.dumps(self.product.meta_data, indent=2, ensure_ascii=False))
+        
+        # Атрибуты
+        self.load_product_attributes()
     
     def save(self):
         """Сохранение товара"""
@@ -457,6 +560,9 @@ class ProductDialog:
                 images.append(ProductImage(src=url))
             product.images = images
             
+            # Атрибуты
+            product.attributes = self.get_product_attributes()
+            
             # Мета-данные
             try:
                 meta_text = self.meta_data_text.get("1.0", "end-1c").strip()
@@ -501,6 +607,294 @@ class ProductDialog:
                 
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось открыть диалог мета-полей:\n{e}")
+    
+    def add_product_attribute(self):
+        """Добавление атрибута к товару"""
+        if not self.attributes:
+            messagebox.showwarning("Предупреждение", "Сначала нужно загрузить атрибуты с сервера")
+            return
+        
+        # Создаем диалог выбора атрибута
+        dialog = AttributeSelectionDialog(self.window, self.attributes)
+        self.window.wait_window(dialog.window)
+        
+        if dialog.result:
+            attr_id, attr_name = dialog.result
+            
+            # Проверяем, не добавлен ли уже этот атрибут
+            if attr_id in self.attribute_widgets:
+                messagebox.showwarning("Предупреждение", f"Атрибут '{attr_name}' уже добавлен к товару")
+                return
+            
+            # Добавляем виджет атрибута
+            self.create_attribute_widget(attr_id, attr_name)
+    
+    def remove_product_attribute(self):
+        """Удаление выбранного атрибута"""
+        # Найдем выбранный атрибут (можно улучшить логику выбора)
+        if not self.attribute_widgets:
+            return
+        
+        # Простая реализация - удаляем последний добавленный атрибут
+        # В более сложной версии можно добавить выбор
+        last_attr_id = list(self.attribute_widgets.keys())[-1]
+        self.remove_attribute_widget(last_attr_id)
+    
+    def create_attribute_widget(self, attr_id: int, attr_name: str):
+        """Создание виджета для атрибута товара"""
+        # Основной контейнер атрибута
+        attr_frame = ctk.CTkFrame(self.product_attributes_frame)
+        attr_frame.pack(fill="x", padx=5, pady=5)
+        
+        # Заголовок атрибута
+        header_frame = ctk.CTkFrame(attr_frame)
+        header_frame.pack(fill="x", padx=5, pady=5)
+        
+        ctk.CTkLabel(header_frame, text=f"Атрибут: {attr_name}", 
+                    font=ctk.CTkFont(weight="bold")).pack(side="left")
+        
+        # Кнопка удаления конкретного атрибута
+        remove_btn = ctk.CTkButton(header_frame, text="✖", width=30, height=25,
+                                 command=lambda: self.remove_attribute_widget(attr_id))
+        remove_btn.pack(side="right", padx=5)
+        
+        # Настройки атрибута
+        settings_frame = ctk.CTkFrame(attr_frame)
+        settings_frame.pack(fill="x", padx=5, pady=5)
+        
+        # Видимость атрибута
+        visible_var = ctk.BooleanVar(value=True)
+        visible_cb = ctk.CTkCheckBox(settings_frame, text="Видимый на странице товара", variable=visible_var)
+        visible_cb.pack(anchor="w", padx=5, pady=2)
+        
+        # Используется для вариаций
+        variation_var = ctk.BooleanVar(value=False)
+        variation_cb = ctk.CTkCheckBox(settings_frame, text="Используется для вариаций", variable=variation_var)
+        variation_cb.pack(anchor="w", padx=5, pady=2)
+        
+        # Значения атрибута
+        values_frame = ctk.CTkFrame(attr_frame)
+        values_frame.pack(fill="x", padx=5, pady=5)
+        
+        ctk.CTkLabel(values_frame, text="Значения атрибута:", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=5)
+        
+        # Контейнер для существующих значений
+        existing_values_frame = ctk.CTkFrame(values_frame)
+        existing_values_frame.pack(fill="x", padx=5, pady=2)
+        
+        ctk.CTkLabel(existing_values_frame, text="Выберите из существующих:").pack(anchor="w", padx=5)
+        
+        # Скроллируемый фрейм для чекбоксов значений
+        values_scroll_frame = ctk.CTkScrollableFrame(existing_values_frame, height=100)
+        values_scroll_frame.pack(fill="x", padx=5, pady=2)
+        
+        # Словарь для хранения переменных чекбоксов
+        value_vars = {}
+        
+        # Добавление нового значения
+        new_value_frame = ctk.CTkFrame(values_frame)
+        new_value_frame.pack(fill="x", padx=5, pady=2)
+        
+        ctk.CTkLabel(new_value_frame, text="Добавить новое значение:").pack(anchor="w", padx=5)
+        
+        new_value_container = ctk.CTkFrame(new_value_frame)
+        new_value_container.pack(fill="x", padx=5, pady=2)
+        
+        new_value_entry = ctk.CTkEntry(new_value_container, placeholder_text="Введите новое значение")
+        new_value_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        add_value_btn = ctk.CTkButton(new_value_container, text="➕ Добавить", width=80,
+                                    command=lambda: self.add_new_attribute_value(attr_id, new_value_entry, values_scroll_frame, value_vars))
+        add_value_btn.pack(side="right")
+        
+        # Сохраняем ссылки на виджеты
+        self.attribute_widgets[attr_id] = {
+            'frame': attr_frame,
+            'name': attr_name,
+            'visible_var': visible_var,
+            'variation_var': variation_var,
+            'values_scroll_frame': values_scroll_frame,
+            'value_vars': value_vars,
+            'new_value_entry': new_value_entry
+        }
+        
+        # Загружаем существующие значения атрибута
+        self.load_attribute_terms(attr_id)
+        
+        # Активируем кнопку удаления
+        self.remove_attribute_btn.configure(state="normal")
+    
+    def load_attribute_terms(self, attr_id: int):
+        """Загрузка существующих значений атрибута"""
+        if attr_id not in self.attribute_widgets:
+            return
+        
+        # Показываем индикатор загрузки
+        widgets = self.attribute_widgets[attr_id]
+        values_frame = widgets['values_scroll_frame']
+        
+        # Очищаем фрейм и показываем индикатор загрузки
+        for widget in values_frame.winfo_children():
+            widget.destroy()
+        
+        loading_label = ctk.CTkLabel(values_frame, text="⏳ Загрузка значений...", text_color="blue")
+        loading_label.pack(anchor="w", padx=5, pady=5)
+        
+        def load_terms_thread():
+            try:
+                # Используем переданный WooCommerce менеджер
+                if self.wc_manager:
+                    terms = self.wc_manager.get_attribute_terms(attr_id)
+                else:
+                    # Если нет доступа к wc_manager, используем пустой список
+                    terms = []
+                
+                # Обновляем интерфейс в главном потоке
+                self.window.after(0, lambda: self.update_attribute_terms_ui(attr_id, terms))
+                
+            except Exception as e:
+                print(f"Ошибка загрузки терминов атрибута {attr_id}: {e}")
+                # В случае ошибки показываем пустой список
+                self.window.after(0, lambda: self.update_attribute_terms_ui(attr_id, []))
+        
+        threading.Thread(target=load_terms_thread, daemon=True).start()
+    
+    def update_attribute_terms_ui(self, attr_id: int, terms: List[Dict]):
+        """Обновление интерфейса с терминами атрибута"""
+        if attr_id not in self.attribute_widgets:
+            return
+        
+        widgets = self.attribute_widgets[attr_id]
+        values_frame = widgets['values_scroll_frame']
+        value_vars = widgets['value_vars']
+        
+        # Очищаем существующие чекбоксы
+        for widget in values_frame.winfo_children():
+            widget.destroy()
+        value_vars.clear()
+        
+        # Добавляем чекбоксы для каждого термина
+        for term in terms:
+            var = ctk.BooleanVar()
+            checkbox = ctk.CTkCheckBox(values_frame, text=term['name'], variable=var)
+            checkbox.pack(anchor="w", padx=5, pady=2)
+            value_vars[term['name']] = var
+        
+        # Если нет терминов, показываем сообщение
+        if not terms:
+            ctk.CTkLabel(values_frame, text="Нет доступных значений", 
+                        text_color="gray").pack(anchor="w", padx=5, pady=5)
+    
+    def add_new_attribute_value(self, attr_id: int, entry_widget, values_frame, value_vars):
+        """Добавление нового значения атрибута"""
+        new_value = entry_widget.get().strip()
+        if not new_value:
+            messagebox.showwarning("Предупреждение", "Введите название нового значения")
+            return
+        
+        # Проверяем, не существует ли уже такое значение
+        if new_value in value_vars:
+            messagebox.showwarning("Предупреждение", f"Значение '{new_value}' уже существует")
+            return
+        
+        # Удаляем сообщение "Нет доступных значений" если оно есть
+        for widget in values_frame.winfo_children():
+            if isinstance(widget, ctk.CTkLabel) and "Нет доступных" in widget.cget("text"):
+                widget.destroy()
+        
+        # Добавляем новый чекбокс
+        var = ctk.BooleanVar(value=True)  # Автоматически выбираем новое значение
+        checkbox = ctk.CTkCheckBox(values_frame, text=new_value, variable=var)
+        checkbox.pack(anchor="w", padx=5, pady=2)
+        value_vars[new_value] = var
+        
+        # Очищаем поле ввода
+        entry_widget.delete(0, "end")
+        
+        messagebox.showinfo("Успех", f"Значение '{new_value}' добавлено")
+    
+    def remove_attribute_widget(self, attr_id: int):
+        """Удаление виджета атрибута"""
+        if attr_id in self.attribute_widgets:
+            # Удаляем виджет
+            self.attribute_widgets[attr_id]['frame'].destroy()
+            del self.attribute_widgets[attr_id]
+            
+            # Если атрибутов не осталось, деактивируем кнопку удаления
+            if not self.attribute_widgets:
+                self.remove_attribute_btn.configure(state="disabled")
+    
+    def get_product_attributes(self) -> List[ProductAttribute]:
+        """Получение списка атрибутов товара из интерфейса"""
+        attributes = []
+        
+        for attr_id, widgets in self.attribute_widgets.items():
+            # Получаем выбранные значения из чекбоксов
+            selected_values = []
+            value_vars = widgets['value_vars']
+            
+            for value_name, var in value_vars.items():
+                if var.get():  # Если чекбокс выбран
+                    selected_values.append(value_name)
+            
+            if selected_values:  # Добавляем только если есть выбранные значения
+                attr = ProductAttribute(
+                    id=attr_id,
+                    name=widgets['name'],
+                    options=selected_values,
+                    visible=widgets['visible_var'].get(),
+                    variation=widgets['variation_var'].get()
+                )
+                attributes.append(attr)
+        
+        return attributes
+    
+    def load_product_attributes(self):
+        """Загрузка атрибутов товара в интерфейс (при редактировании)"""
+        if not self.product or not self.product.attributes:
+            return
+        
+        for attr in self.product.attributes:
+            # Создаем виджет для атрибута
+            self.create_attribute_widget(attr.id, attr.name)
+            
+            # Заполняем значения после загрузки терминов
+            def set_attribute_values(attr_obj=attr):
+                if attr_obj.id in self.attribute_widgets:
+                    widgets = self.attribute_widgets[attr_obj.id]
+                    widgets['visible_var'].set(attr_obj.visible)
+                    widgets['variation_var'].set(attr_obj.variation)
+                    
+                    # Устанавливаем выбранные значения в чекбоксах
+                    self.set_selected_attribute_values(attr_obj.id, attr_obj.options)
+            
+            # Устанавливаем значения с небольшой задержкой, чтобы термины успели загрузиться
+            self.window.after(1000, set_attribute_values)
+    
+    def set_selected_attribute_values(self, attr_id: int, selected_options: List[str]):
+        """Установка выбранных значений атрибута"""
+        if attr_id not in self.attribute_widgets:
+            return
+        
+        widgets = self.attribute_widgets[attr_id]
+        value_vars = widgets['value_vars']
+        values_frame = widgets['values_scroll_frame']
+        
+        # Сначала устанавливаем существующие значения
+        for option in selected_options:
+            if option in value_vars:
+                value_vars[option].set(True)
+            else:
+                # Если значение не найдено в существующих, добавляем его как новое
+                var = ctk.BooleanVar(value=True)
+                checkbox = ctk.CTkCheckBox(values_frame, text=option, variable=var)
+                checkbox.pack(anchor="w", padx=5, pady=2)
+                value_vars[option] = var
+                
+                # Удаляем сообщение "Нет доступных значений" если оно есть
+                for widget in values_frame.winfo_children():
+                    if isinstance(widget, ctk.CTkLabel) and "Нет доступных" in widget.cget("text"):
+                        widget.destroy()
     
     def cancel(self):
         """Отмена"""

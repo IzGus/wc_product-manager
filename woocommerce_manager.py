@@ -297,6 +297,173 @@ class WooCommerceManager:
             logger.error(f"Ошибка при получении атрибутов: {e}")
             return []
     
+    def create_attribute(self, attribute_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Создание нового атрибута
+        
+        Args:
+            attribute_data: Данные атрибута (name, slug, type, order_by, has_archives)
+            
+        Returns:
+            Dict: Созданный атрибут или None в случае ошибки
+        """
+        if not self.api:
+            logger.error("API не инициализирован")
+            return None
+        
+        try:
+            response = self.api.post("products/attributes", attribute_data)
+            if response.status_code == 201:
+                result = response.json()
+                logger.info(f"Атрибут '{result['name']}' создан с ID {result['id']}")
+                return result
+            else:
+                logger.error(f"Ошибка создания атрибута: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Ошибка при создании атрибута: {e}")
+            return None
+    
+    def update_attribute(self, attribute_id: int, attribute_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Обновление атрибута
+        
+        Args:
+            attribute_id: ID атрибута
+            attribute_data: Обновленные данные атрибута
+            
+        Returns:
+            Dict: Обновленный атрибут или None в случае ошибки
+        """
+        if not self.api:
+            logger.error("API не инициализирован")
+            return None
+        
+        try:
+            response = self.api.put(f"products/attributes/{attribute_id}", attribute_data)
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"Атрибут ID {attribute_id} обновлен")
+                return result
+            else:
+                logger.error(f"Ошибка обновления атрибута: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении атрибута: {e}")
+            return None
+    
+    def delete_attribute(self, attribute_id: int) -> bool:
+        """
+        Удаление атрибута
+        
+        Args:
+            attribute_id: ID атрибута
+            
+        Returns:
+            bool: True если удаление прошло успешно
+        """
+        if not self.api:
+            logger.error("API не инициализирован")
+            return False
+        
+        try:
+            response = self.api.delete(f"products/attributes/{attribute_id}", params={"force": True})
+            if response.status_code == 200:
+                logger.info(f"Атрибут ID {attribute_id} удален")
+                return True
+            else:
+                logger.error(f"Ошибка удаления атрибута: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Ошибка при удалении атрибута: {e}")
+            return False
+    
+    def get_attribute_terms(self, attribute_id: int) -> List[Dict[str, Any]]:
+        """
+        Получение терминов (значений) атрибута
+        
+        Args:
+            attribute_id: ID атрибута
+            
+        Returns:
+            List[Dict]: Список терминов атрибута
+        """
+        if not self.api:
+            logger.error("API не инициализирован")
+            return []
+        
+        try:
+            response = self.api.get(f"products/attributes/{attribute_id}/terms", params={"per_page": 100})
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"Ошибка получения терминов атрибута: {response.status_code}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Ошибка при получении терминов атрибута: {e}")
+            return []
+    
+    def create_attribute_term(self, attribute_id: int, term_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Создание термина (значения) атрибута
+        
+        Args:
+            attribute_id: ID атрибута
+            term_data: Данные термина (name, slug, description)
+            
+        Returns:
+            Dict: Созданный термин или None в случае ошибки
+        """
+        if not self.api:
+            logger.error("API не инициализирован")
+            return None
+        
+        try:
+            response = self.api.post(f"products/attributes/{attribute_id}/terms", term_data)
+            if response.status_code == 201:
+                result = response.json()
+                logger.info(f"Термин '{result['name']}' создан для атрибута ID {attribute_id}")
+                return result
+            else:
+                logger.error(f"Ошибка создания термина: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Ошибка при создании термина: {e}")
+            return None
+    
+    def delete_attribute_term(self, attribute_id: int, term_id: int) -> bool:
+        """
+        Удаление термина атрибута
+        
+        Args:
+            attribute_id: ID атрибута
+            term_id: ID термина
+            
+        Returns:
+            bool: True если удаление прошло успешно
+        """
+        if not self.api:
+            logger.error("API не инициализирован")
+            return False
+        
+        try:
+            response = self.api.delete(f"products/attributes/{attribute_id}/terms/{term_id}", params={"force": True})
+            if response.status_code == 200:
+                logger.info(f"Термин ID {term_id} удален из атрибута ID {attribute_id}")
+                return True
+            else:
+                logger.error(f"Ошибка удаления термина: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Ошибка при удалении термина: {e}")
+            return False
+    
     def create_variation(self, parent_id: int, variation_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Создание вариации товара

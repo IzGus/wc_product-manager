@@ -91,6 +91,7 @@ class ProductManagerGUI:
         settings_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Настройки", menu=settings_menu)
         settings_menu.add_command(label="🔗 Подключения WooCommerce", command=self.open_connection_settings)
+        settings_menu.add_command(label="🏷️ Управление атрибутами", command=self.open_attributes_manager)
         settings_menu.add_separator()
         settings_menu.add_command(label="📤 Экспорт профилей", command=self.export_profiles_menu)
         settings_menu.add_command(label="📥 Импорт профилей", command=self.import_profiles_menu)
@@ -437,7 +438,8 @@ class ProductManagerGUI:
         """Добавление нового товара"""
         from product_dialog import ProductDialog
         
-        dialog = ProductDialog(self.root, categories=self.categories, attributes=self.attributes)
+        dialog = ProductDialog(self.root, categories=self.categories, attributes=self.attributes, wc_manager=self.wc_manager)
+        self.root.wait_window(dialog.window)  # Ждем закрытия диалога
         if dialog.result:
             # Помечаем товар как новый
             dialog.result.mark_as_new()
@@ -462,7 +464,8 @@ class ProductManagerGUI:
             if product:
                 from product_dialog import ProductDialog
                 
-                dialog = ProductDialog(self.root, product=product, categories=self.categories, attributes=self.attributes)
+                dialog = ProductDialog(self.root, product=product, categories=self.categories, attributes=self.attributes, wc_manager=self.wc_manager)
+                self.root.wait_window(dialog.window)  # Ждем закрытия диалога
                 if dialog.result:
                     # Помечаем товар как измененный
                     dialog.result.mark_as_modified()
@@ -873,6 +876,32 @@ class ProductManagerGUI:
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось открыть настройки подключения:\n{e}")
             logger.error(f"Ошибка открытия настроек: {e}")
+    
+    def open_attributes_manager(self):
+        """Открытие диалога управления атрибутами"""
+        if not self.wc_manager:
+            messagebox.showwarning("Предупреждение", "Сначала необходимо подключиться к WooCommerce API")
+            return
+        
+        try:
+            from attributes_manager_dialog import AttributesManagerDialog
+            dialog = AttributesManagerDialog(self.root, self.wc_manager)
+            self.root.wait_window(dialog.window)
+            
+            # После закрытия диалога обновляем список атрибутов
+            if self.wc_manager:
+                def reload_attributes():
+                    try:
+                        self.attributes = self.wc_manager.get_attributes()
+                        self.update_status("Список атрибутов обновлен")
+                    except Exception as e:
+                        logger.error(f"Ошибка обновления атрибутов: {e}")
+                
+                threading.Thread(target=reload_attributes, daemon=True).start()
+                
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось открыть управление атрибутами:\n{e}")
+            logger.error(f"Ошибка открытия управления атрибутами: {e}")
     
     def update_connection_info(self):
         """Обновление информации о текущем подключении"""
