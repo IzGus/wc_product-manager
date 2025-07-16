@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 import json
 
 from product_models import Product, ProductCategory, ProductImage, ProductAttribute
+from meta_fields_dialog import MetaFieldsDialog
 
 class ProductDialog:
     """Диалоговое окно для работы с товарами"""
@@ -276,7 +277,20 @@ class ProductDialog:
         adv_frame = ctk.CTkFrame(self.notebook)
         self.notebook.add(adv_frame, text="Дополнительно")
         
-        ctk.CTkLabel(adv_frame, text="Мета-данные (JSON)", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=5)
+        # Заголовок и кнопка для мета-данных
+        meta_header_frame = ctk.CTkFrame(adv_frame)
+        meta_header_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(meta_header_frame, text="Мета-данные", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left", pady=5)
+        
+        # Кнопка для визуального редактора
+        meta_edit_btn = ctk.CTkButton(meta_header_frame, text="Визуальный редактор", 
+                                     command=self.open_meta_fields_dialog, width=150)
+        meta_edit_btn.pack(side="right", padx=5, pady=5)
+        
+        # Текстовое поле для JSON (для продвинутых пользователей)
+        ctk.CTkLabel(adv_frame, text="JSON формат (для продвинутых пользователей):", 
+                    font=ctk.CTkFont(size=12)).pack(pady=(10, 0))
         
         self.meta_data_text = ctk.CTkTextbox(adv_frame, height=200)
         self.meta_data_text.pack(fill="both", expand=True, padx=10, pady=5)
@@ -457,6 +471,36 @@ class ProductDialog:
             
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось сохранить товар:\n{e}")
+    
+    def open_meta_fields_dialog(self):
+        """Открытие визуального диалога для редактирования мета-полей"""
+        try:
+            # Получаем текущие мета-данные из JSON поля
+            meta_text = self.meta_data_text.get("1.0", "end-1c").strip()
+            current_meta_data = []
+            
+            if meta_text:
+                try:
+                    current_meta_data = json.loads(meta_text)
+                    if not isinstance(current_meta_data, list):
+                        current_meta_data = []
+                except json.JSONDecodeError:
+                    messagebox.showwarning("Предупреждение", 
+                                         "Некорректный JSON в поле мета-данных. Будет создан новый список.")
+                    current_meta_data = []
+            
+            # Открываем диалог мета-полей
+            dialog = MetaFieldsDialog(self.window, current_meta_data)
+            self.window.wait_window(dialog.dialog)
+            
+            # Если пользователь сохранил изменения, обновляем JSON поле
+            if dialog.result is not None:
+                updated_json = json.dumps(dialog.result, indent=2, ensure_ascii=False)
+                self.meta_data_text.delete("1.0", "end")
+                self.meta_data_text.insert("1.0", updated_json)
+                
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось открыть диалог мета-полей:\n{e}")
     
     def cancel(self):
         """Отмена"""

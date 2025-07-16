@@ -66,6 +66,12 @@ class Product:
     date_created: str = ""
     date_modified: str = ""
     
+    # Поля для отслеживания изменений
+    _is_new: bool = field(default=False, init=False)
+    _is_modified: bool = field(default=False, init=False)
+    _is_deleted: bool = field(default=False, init=False)
+    _original_data: Optional[Dict[str, Any]] = field(default=None, init=False)
+    
     def to_woocommerce_dict(self) -> Dict[str, Any]:
         """Преобразование в формат WooCommerce API"""
         data = {
@@ -190,6 +196,9 @@ class Product:
             date_modified=data.get("date_modified", "")
         )
         
+        # Сохраняем оригинальные данные для отслеживания изменений
+        product.save_original_data()
+        
         return product
     
     def get_display_info(self) -> Dict[str, str]:
@@ -203,4 +212,46 @@ class Product:
             "Статус": self.status,
             "Остаток": str(self.stock_quantity or "∞"),
             "Категории": ", ".join([cat.name for cat in self.categories])
-        } 
+        }
+    
+    def mark_as_new(self):
+        """Пометить товар как новый"""
+        self._is_new = True
+        self._is_modified = False
+        self._is_deleted = False
+    
+    def mark_as_modified(self):
+        """Пометить товар как измененный"""
+        if not self._is_new:
+            self._is_modified = True
+    
+    def mark_as_deleted(self):
+        """Пометить товар как удаленный"""
+        self._is_deleted = True
+        self._is_modified = False
+    
+    def save_original_data(self):
+        """Сохранить оригинальные данные для отслеживания изменений"""
+        self._original_data = self.to_woocommerce_dict()
+    
+    def is_changed(self) -> bool:
+        """Проверить, был ли товар изменен"""
+        return self._is_new or self._is_modified or self._is_deleted
+    
+    def get_change_status(self) -> str:
+        """Получить статус изменения товара"""
+        if self._is_new:
+            return "new"
+        elif self._is_deleted:
+            return "deleted"
+        elif self._is_modified:
+            return "modified"
+        else:
+            return "unchanged"
+    
+    def reset_change_flags(self):
+        """Сбросить флаги изменений после успешной синхронизации"""
+        self._is_new = False
+        self._is_modified = False
+        self._is_deleted = False
+        self.save_original_data() 

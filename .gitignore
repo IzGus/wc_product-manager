@@ -147,4 +147,51 @@ config_local.py
 
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# WooCommerce Application Security
+# API keys and sensitive configuration
+keys.txt
+*.key
+*.secret
+*_secret.txt
+*_keys.txt
+api_config.py
+local_config.py
+production_config.py
+
+# Connection profiles with sensitive data
+wc_connections_backup.json
+connections_*.json
+profiles_*.json
+
+# Exported product data that may contain sensitive info
+*export*.csv
+*backup*.csv
+test_*_data.csv
+customer_data*.csv
+private_products*.csv
+
+# Test files with real data
+test_real_*.py
+live_test_*.py
+production_test_*.py
+
+# Personal/development files
+personal_*.py
+dev_*.py
+my_*.py
+temp_*.py
+scratch_*.py
+
+# Large data files
+*.csv.large
+*.json.large
+big_data_*.csv
+
+# Logs that may contain sensitive data
+error_*.log
+api_*.log
+connection_*.log
+debug_*.log
+security_*.log 
