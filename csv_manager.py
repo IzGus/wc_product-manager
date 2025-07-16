@@ -1,5 +1,6 @@
 """
 Модуль для работы с CSV файлами - импорт и экспорт товаров
+Поддерживает как простой формат, так и формат WooCommerce
 """
 import pandas as pd
 import logging
@@ -97,9 +98,57 @@ class CSVManager:
             logger.error(f"Ошибка экспорта в CSV: {e}")
             return False
     
+    def detect_csv_format(self, filename: str) -> str:
+        """
+        Определение формата CSV файла
+        
+        Args:
+            filename: Имя CSV файла
+            
+        Returns:
+            str: 'woocommerce' или 'simple'
+        """
+        try:
+            # Читаем только заголовки
+            df = pd.read_csv(filename, nrows=0, encoding='utf-8-sig')
+            columns = list(df.columns)
+            
+            # Проверяем наличие характерных полей WooCommerce
+            wc_indicators = ['ID', 'Тип', 'Артикул', 'Имя', 'Базовая цена']
+            found_indicators = sum(1 for indicator in wc_indicators if indicator in columns)
+            
+            if found_indicators >= 3:
+                logger.info("Обнаружен формат WooCommerce CSV")
+                return 'woocommerce'
+            else:
+                logger.info("Обнаружен простой формат CSV")
+                return 'simple'
+                
+        except Exception as e:
+            logger.error(f"Ошибка определения формата CSV: {e}")
+            return 'simple'
+
     def import_products_from_csv(self, filename: str) -> List[Product]:
         """
-        Импорт товаров из CSV файла
+        Импорт товаров из CSV файла с автоматическим определением формата
+        
+        Args:
+            filename: Имя CSV файла
+            
+        Returns:
+            List[Product]: Список импортированных товаров
+        """
+        # Определяем формат файла
+        csv_format = self.detect_csv_format(filename)
+        
+        if csv_format == 'woocommerce':
+            return self.import_woocommerce_csv(filename)
+        else:
+            return self.import_simple_csv(filename)
+
+    def import_simple_csv(self, filename: str) -> List[Product]:
+        """
+        Импорт товаров из простого CSV файла
         
         Args:
             filename: Имя CSV файла
@@ -200,11 +249,34 @@ class CSVManager:
                     logger.error(f"Ошибка обработки строки {index + 1}: {e}")
                     continue
             
-            logger.info(f"Импорт завершен: {len(products)} товаров из файла {filename}")
+            logger.info(f"Импорт простого CSV завершен: {len(products)} товаров из файла {filename}")
             return products
             
         except Exception as e:
-            logger.error(f"Ошибка импорта из CSV: {e}")
+            logger.error(f"Ошибка импорта простого CSV: {e}")
+            return []
+
+    def import_woocommerce_csv(self, filename: str) -> List[Product]:
+        """
+        Импорт товаров из CSV файла WooCommerce формата
+        
+        Args:
+            filename: Имя CSV файла
+            
+        Returns:
+            List[Product]: Список импортированных товаров
+        """
+        try:
+            from woocommerce_csv_manager import WooCommerceCSVManager
+            wc_manager = WooCommerceCSVManager()
+            products = wc_manager.import_woocommerce_csv(filename)
+            logger.info(f"Импорт WooCommerce CSV завершен: {len(products)} товаров")
+            return products
+        except ImportError:
+            logger.error("WooCommerceCSVManager не найден, используется простой импорт")
+            return self.import_simple_csv(filename)
+        except Exception as e:
+            logger.error(f"Ошибка импорта WooCommerce CSV: {e}")
             return []
     
     def validate_csv_structure(self, filename: str) -> Dict[str, Any]:

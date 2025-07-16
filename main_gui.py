@@ -69,8 +69,20 @@ class ProductManagerGUI:
         # Файл
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Файл", menu=file_menu)
-        file_menu.add_command(label="Импорт из CSV", command=self.import_csv)
-        file_menu.add_command(label="Экспорт в CSV", command=self.export_csv)
+        
+        # Импорт
+        import_menu = tk.Menu(file_menu, tearoff=0)
+        file_menu.add_cascade(label="Импорт", menu=import_menu)
+        import_menu.add_command(label="Авто-определение формата", command=self.import_csv)
+        import_menu.add_command(label="Простой CSV", command=lambda: self.import_csv('simple'))
+        import_menu.add_command(label="WooCommerce CSV", command=lambda: self.import_csv('woocommerce'))
+        
+        # Экспорт
+        export_menu = tk.Menu(file_menu, tearoff=0)
+        file_menu.add_cascade(label="Экспорт", menu=export_menu)
+        export_menu.add_command(label="Простой CSV", command=lambda: self.export_csv('simple'))
+        export_menu.add_command(label="WooCommerce CSV", command=lambda: self.export_csv('woocommerce'))
+        
         file_menu.add_separator()
         file_menu.add_command(label="Выход", command=self.root.quit)
         
@@ -410,7 +422,7 @@ class ProductManagerGUI:
         # Здесь должна быть логика синхронизации с сайтом
         messagebox.showinfo("Информация", "Функция сохранения будет реализована в следующей версии")
     
-    def import_csv(self):
+    def import_csv(self, csv_format='auto'):
         """Импорт товаров из CSV"""
         filename = filedialog.askopenfilename(
             title="Выберите CSV файл для импорта",
@@ -423,7 +435,20 @@ class ProductManagerGUI:
                 self.root.after(0, lambda: self.progress_bar.start())
                 
                 try:
-                    imported_products = self.csv_manager.import_products_from_csv(filename)
+                    # Определяем формат если нужно
+                    if csv_format == 'auto':
+                        detected_format = self.csv_manager.detect_csv_format(filename)
+                        format_message = f"Обнаружен формат: {detected_format}"
+                        self.root.after(0, lambda: self.update_status(format_message))
+                    
+                    # Импортируем в зависимости от формата
+                    if csv_format == 'simple':
+                        imported_products = self.csv_manager.import_simple_csv(filename)
+                    elif csv_format == 'woocommerce':
+                        imported_products = self.csv_manager.import_woocommerce_csv(filename)
+                    else:
+                        imported_products = self.csv_manager.import_products_from_csv(filename)
+                    
                     self.products.extend(imported_products)
                     
                     self.root.after(0, self.update_products_table)
@@ -436,15 +461,16 @@ class ProductManagerGUI:
             
             threading.Thread(target=import_thread, daemon=True).start()
     
-    def export_csv(self):
+    def export_csv(self, csv_format='simple'):
         """Экспорт товаров в CSV"""
         if not self.products:
             messagebox.showwarning("Предупреждение", "Нет товаров для экспорта")
             return
         
+        format_suffix = "_woocommerce" if csv_format == 'woocommerce' else "_simple"
         filename = filedialog.asksaveasfilename(
-            title="Сохранить как CSV",
-            defaultextension=".csv",
+            title=f"Сохранить как {csv_format.upper()} CSV",
+            defaultextension=f"{format_suffix}.csv",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
         )
         
@@ -454,10 +480,23 @@ class ProductManagerGUI:
                 self.root.after(0, lambda: self.progress_bar.start())
                 
                 try:
-                    success = self.csv_manager.export_products_to_csv(self.products, filename)
+                    if csv_format == 'woocommerce':
+                        # Экспорт в формате WooCommerce
+                        try:
+                            from woocommerce_csv_manager import WooCommerceCSVManager
+                            wc_manager = WooCommerceCSVManager()
+                            success = wc_manager.export_to_woocommerce_csv(self.products, filename)
+                        except ImportError:
+                            self.root.after(0, lambda: messagebox.showerror("Ошибка", "WooCommerce CSV менеджер не найден"))
+                            success = False
+                    else:
+                        # Простой экспорт
+                        success = self.csv_manager.export_products_to_csv(self.products, filename)
+                    
                     if success:
-                        self.root.after(0, lambda: messagebox.showinfo("Успех", "Экспорт завершен успешно"))
-                        self.root.after(0, lambda: self.update_status("Экспорт завершен"))
+                        format_name = "WooCommerce" if csv_format == 'woocommerce' else "простой"
+                        self.root.after(0, lambda: messagebox.showinfo("Успех", f"Экспорт в {format_name} CSV завершен успешно"))
+                        self.root.after(0, lambda: self.update_status(f"Экспорт в {format_name} CSV завершен"))
                     else:
                         self.root.after(0, lambda: messagebox.showerror("Ошибка", "Не удалось экспортировать данные"))
                 
